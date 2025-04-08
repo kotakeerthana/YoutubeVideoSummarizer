@@ -40,7 +40,7 @@ This project was designed to mimic the feel of a handwritten notebook while givi
 ##   Run Locally
 
 ```bash
-git clone https://github.com/kotakeerthana/youtube-gemini-summarizer.git
-cd youtube-gemini-summarizer
+git clone https://github.com/kotakeerthana/YoutubeVideoSummarizer.git
+cd YoutubeVideoSummarizer
 pip install -r requirements.txt
 streamlit run app.py
