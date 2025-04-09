@@ -6,6 +6,7 @@ from youtube_transcript_api import YouTubeTranscriptApi
 from fpdf import FPDF
 import docx
 from io import BytesIO
+import time
 
 # Setup 
 load_dotenv()
@@ -16,7 +17,6 @@ st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville&display=swap');
 
-/* Global Styles */
 body, .stApp {
     background-image: url("https://images.pexels.com/photos/1382073/pexels-photo-1382073.jpeg");
     background-size: cover;
@@ -25,29 +25,21 @@ body, .stApp {
     font-family: 'Libre Baskerville', serif;
     color: #000 !important;
 }
-
-/* Main container */
 .block-container {
     background-color: rgba(255, 255, 255, 0.75);
     padding: 2rem 3rem;
     border-radius: 10px;
 }
-/* Streamlit navbar & menu icon text color */
 header[data-testid="stHeader"] {
     color: white !important;
 }
-
 header[data-testid="stHeader"] * {
     color: white !important;
     fill: white !important;
 }
-
-/* Headings */
 h1, h2, h3, h4 {
     text-align: center;
 }
-
-/* Inputs */
 input[type="text"], textarea, .stTextInput input,
 div[data-baseweb="select"] {
     background-color: #fffef2 !important;
@@ -56,13 +48,9 @@ div[data-baseweb="select"] {
     border-radius: 10px !important;
     padding: 10px !important;
 }
-
-/* Labels */
 label, .stSelectbox label, .stRadio label, .stTextInput label {
     color: #000 !important;
 }
-
-/* Buttons */
 .stButton > button, .stDownloadButton > button {
     background-color: #fff8dc !important;
     color: #000 !important;
@@ -72,21 +60,16 @@ label, .stSelectbox label, .stRadio label, .stTextInput label {
     font-weight: bold !important;
     font-size: 16px !important;
 }
-
 .stButton > button:hover, .stDownloadButton > button:hover {
     background-color: #f5deb3 !important;
     transform: scale(1.02);
 }
-
-/* Expander styling */
 details {
     background-color: #fffef2 !important;
     border: 1px dashed #a6a6a6 !important;
     border-radius: 10px;
     padding: 10px;
 }
-
-/* Scrollbar */
 ::-webkit-scrollbar {
     width: 8px;
 }
@@ -110,26 +93,19 @@ def get_transcript(video_id: str) -> str:
     try:
         transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
         return " ".join([entry["text"] for entry in transcript_list])
-
     except Exception as e:
         if "Subtitles are disabled" in str(e) or "Could not retrieve a transcript" in str(e):
-            st.warning(" Transcript not available for this video.\n\nThis could be due to:")
-            st.markdown("""
-            - Subtitles are disabled for this video  
-            - The video is too new  
-            - It's a music video or age-restricted  
-            - It's from a region that doesn't support captions
-
-             Try another video with subtitles enabled.
-            """)
+            st.warning("Transcript not available for this video. Try another video with subtitles enabled.")
         else:
-            st.error(f" Unexpected error while fetching transcript: {e}")
+            st.error(f"Unexpected error while fetching transcript: {e}")
         return ""
 
 def call_gemini(prompt: str, transcript: str) -> str:
     try:
         model = genai.GenerativeModel(model_name="models/gemini-1.5-pro-latest")
+        start = time.time()
         response = model.generate_content(prompt + transcript)
+        st.caption(f"Generated in {time.time() - start:.2f} seconds")
         return response.text
     except Exception as e:
         st.error(f"Gemini Error: {e}")
@@ -138,24 +114,17 @@ def call_gemini(prompt: str, transcript: str) -> str:
 def create_pdf(text: str) -> BytesIO:
     pdf = FPDF()
     pdf.add_page()
-
     font_path = "DejaVuSans.ttf"
     if not os.path.exists(font_path):
         raise FileNotFoundError("Missing DejaVuSans.ttf in the project folder.")
-
     pdf.add_font("DejaVu", "", font_path, uni=True)
     pdf.set_font("DejaVu", "", 12)
-
     for line in text.split('\n'):
         pdf.multi_cell(0, 10, line)
-
-    # Write PDF to string then encode and wrap in BytesIO
-    pdf_output = pdf.output(dest='S').encode('latin1')
     buffer = BytesIO()
-    buffer.write(pdf_output)
+    buffer.write(pdf.output(dest='S').encode('latin1'))
     buffer.seek(0)
     return buffer
-
 
 def create_word(text: str) -> BytesIO:
     doc = docx.Document()
@@ -166,7 +135,6 @@ def create_word(text: str) -> BytesIO:
     buffer.seek(0)
     return buffer
 
-#Prompts 
 PROMPTS = {
     "tl_dr": "TL;DR this transcript:\n\n",
     "bullet_points": "Summarize this transcript into bullet points (max 250 words):\n\n",
@@ -175,8 +143,7 @@ PROMPTS = {
     "translate": lambda lang: f"Translate this transcript into {lang}:\n\n",
     "keywords": "Extract 10 important keywords from this transcript:\n\n",
     "related_articles": (
-        "Generate 2 fictional related article titles with 1–2 line summaries. "
-        "For each, include a realistic URL. Format:\n\n"
+        "Generate 2 fictional related article titles with 1–2 line summaries. For each, include a realistic URL.\n\n"
         "1. **[Title](https://example.com)**\nSummary: ..."
     ),
     "chat_base": "You are an expert answering questions based only on the transcript below:\n\n"
@@ -186,20 +153,23 @@ PROMPTS = {
 st.title(" YouTube Video Summarizer with Gemini")
 
 youtube_url = st.text_input(" Enter YouTube Video URL:")
-
 if youtube_url:
     video_id = get_video_id(youtube_url)
-    st.image(f"http://img.youtube.com/vi/{video_id}/0.jpg", use_container_width =True)
+    st.image(f"http://img.youtube.com/vi/{video_id}/0.jpg", use_container_width=True)
 
     if st.button(" Get Transcript"):
-        transcript = get_transcript(video_id)
-        if transcript:
-            st.session_state.transcript = transcript
-            st.success("Transcript Loaded ")
+        with st.spinner("Fetching transcript..."):
+            transcript = get_transcript(video_id)
+            if transcript:
+                st.session_state.transcript = transcript
+                st.success("Transcript Loaded")
 
-# Main Logic 
 if "transcript" in st.session_state:
     transcript = st.session_state.transcript
+    MAX_CHARS = 10000
+    if len(transcript) > MAX_CHARS:
+        transcript = transcript[:MAX_CHARS]
+        st.info("Transcript truncated for performance.")
 
     st.markdown("---")
     st.subheader(" Video Transcript")
@@ -210,7 +180,6 @@ if "transcript" in st.session_state:
 
     with tabs[0]:
         st.markdown(" Generate Summary")
-
         label_to_key = {
             "TL;DR": "tl_dr",
             "Bullet Points": "bullet_points",
@@ -220,10 +189,8 @@ if "transcript" in st.session_state:
             "Keyword Extraction": "keywords",
             "Related Articles": "related_articles"
         }
-
         option = st.selectbox(" Select Summary Type", list(label_to_key.keys()))
         generate_clicked = st.button("Generate")
-
         prompt_key = label_to_key[option]
 
         if "summary_result" not in st.session_state:
@@ -243,7 +210,6 @@ if "transcript" in st.session_state:
 
             with st.expander(" Download your summary"):
                 format = st.selectbox("Choose download format", ["TXT", "PDF", "Word (.docx)"])
-
                 if format == "TXT":
                     st.download_button(" Download as .txt", st.session_state.summary_result,
                                        file_name="summary.txt", mime="text/plain")
@@ -253,21 +219,17 @@ if "transcript" in st.session_state:
                 elif format == "Word (.docx)":
                     st.download_button(" Download as .docx", create_word(st.session_state.summary_result),
                                        file_name="summary.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-    #chat
+
     with tabs[1]:
         st.markdown("Ask Questions About This Video")
-
         if "chat_history" not in st.session_state:
             st.session_state.chat_history = []
-
         user_question = st.text_input("Type your question...")
         ask_clicked = st.button("Ask Gemini")
-
         if ask_clicked and user_question.strip():
             full_prompt = PROMPTS["chat_base"] + transcript + "\n\nQuestion: " + user_question
             answer = call_gemini(full_prompt, "")
             st.session_state.chat_history.append((user_question, answer))
-
         for q, a in reversed(st.session_state.chat_history):
             with st.chat_message("user"):
                 st.markdown(f"**You:** {q}")
